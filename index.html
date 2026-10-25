@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo Collage</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background-color: #0b0b0b;
+            color: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+        .photo {
+            position: absolute;
+            width: 17vmin;
+            border: 0.6vmin solid #f4f4f4;
+            border-radius: 3px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.7);
+            transform: translate(-50%, -50%) rotate(var(--rot));
+            transition: transform 0.25s ease, z-index 0s;
+            cursor: pointer;
+            z-index: var(--z);
+        }
+        .pop-in { animation: pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+        @keyframes pop {
+            0%   { opacity: 0; transform: translate(-50%, -50%) rotate(var(--rot)) scale(0); }
+            100% { opacity: 1; transform: translate(-50%, -50%) rotate(var(--rot)) scale(1); }
+        }
+        .photo:hover { transform: translate(-50%, -50%) rotate(0deg) scale(1.25); z-index: 2000000; }
+        .video-card {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: min(52vw, 70vh * 4 / 3);
+            aspect-ratio: 4 / 3;
+            background: #000;
+            border-radius: 8px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.9);
+            z-index: 20;
+            overflow: hidden;
+        }
+        video { width: 100%; height: 100%; object-fit: contain; display: block; }
+        #lightbox {
+            position: fixed; inset: 0; background: rgba(0, 0, 0, 0.9);
+            display: none; align-items: center; justify-content: center; z-index: 3000000; cursor: zoom-out;
+        }
+        #lightbox.open { display: flex; }
+        #lightbox img { max-width: 92vw; max-height: 92vh; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div class="video-card">
+        <video src="clip.mp4" controls autoplay muted loop playsinline></video>
+    </div>
+    <div id="lightbox"><img alt=""></div>
+
+    <script>
+        // Placeholder stock videos; replace with the real video sources later.
+        const VIDEOS = [
+            'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
+            'https://www.w3schools.com/html/mov_bbb.mp4',
+            'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+            'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4'
+        ];
+        // Placeholder photo library; replace with the real library list later.
+        const PHOTOS = Array.from({ length: 16 }, (_, i) => `images/photo${String(i + 1).padStart(2, '0')}.jpg`);
+
+        const video = document.querySelector('video');
+        let current = 0;
+        video.removeAttribute('loop');
+        video.src = VIDEOS[0];
+        const playNext = () => {
+            current = (current + 1) % VIDEOS.length;
+            video.src = VIDEOS[current];
+            video.play().catch(() => {});
+        };
+        video.addEventListener('ended', playNext);
+        video.addEventListener('error', playNext);
+
+        // Photos glitch in continuously at random spots outside the video and are never
+        // removed; each new one is layered on top of the earlier ones. Images load lazily.
+        const MAX_PHOTOS = 1500;
+        let zCounter = 1;
+        let shown = 0;
+        let deck = [];
+        const nextPhoto = () => {
+            if (!deck.length) {
+                deck = PHOTOS.slice();
+                for (let i = deck.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [deck[i], deck[j]] = [deck[j], deck[i]];
+                }
+            }
+            return deck.pop();
+        };
+
+        let popTimer;
+        function popPhoto() {
+            const W = innerWidth, H = innerHeight;
+            const v = document.querySelector('.video-card').getBoundingClientRect();
+            const freeArea = W * H - (v.right - v.left) * (v.bottom - v.top);
+            const base = Math.min(Math.sqrt(freeArea / PHOTOS.length) * 1.8, Math.min(W, H) * 0.2);
+            let size = base * (0.7 + Math.random() * 0.6);
+            let x, y, ok = false;
+            // Shrink until the photo fits in a free spot, so thin strips above and below the video get used too.
+            for (let attempt = 0; attempt < 12 && !ok; attempt++) {
+                const half = size * 0.6;
+                for (let t = 0; t < 40 && !ok; t++) {
+                    x = Math.random() * W;
+                    y = Math.random() * H;
+                    ok = !(x + half > v.left && x - half < v.right && y + half > v.top && y - half < v.bottom);
+                }
+                if (!ok) size *= 0.85;
+            }
+
+            if (ok) {
+                const img = document.createElement('img');
+                img.className = 'photo pop-in';
+                img.alt = 'Photo';
+                img.style.width = size + 'px';
+                img.style.left = x + 'px';
+                img.style.top = y + 'px';
+                img.style.setProperty('--rot', (Math.random() - 0.5) * 30 + 'deg');
+                img.style.setProperty('--z', zCounter++);
+                // Add to the page only once loaded so the pop is visible exactly on the 2s beat;
+                // a broken file is skipped and retried right away.
+                img.addEventListener('load', () => { document.body.appendChild(img); shown++; });
+                img.addEventListener('error', () => { clearTimeout(popTimer); popTimer = setTimeout(popPhoto, 50); });
+                img.src = nextPhoto();
+                if (shown < MAX_PHOTOS) popTimer = setTimeout(popPhoto, 2000);
+            } else if (shown < MAX_PHOTOS) {
+                popTimer = setTimeout(popPhoto, 2000);
+            }
+        }
+        popPhoto();
+        let resizeTimer;
+        addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                clearTimeout(popTimer);
+                if (shown < MAX_PHOTOS) popPhoto();
+            }, 200);
+        });
+
+        const lb = document.getElementById('lightbox');
+        document.addEventListener('click', e => {
+            if (e.target.classList.contains('photo')) {
+                lb.querySelector('img').src = e.target.src;
+                lb.classList.add('open');
+            } else if (lb.contains(e.target)) {
+                lb.classList.remove('open');
+            }
+        });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') lb.classList.remove('open'); });
+    </script>
+</body>
+</html>
