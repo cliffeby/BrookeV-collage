@@ -31,6 +31,13 @@
             100% { opacity: 1; transform: translate(-50%, -50%) rotate(var(--rot)) scale(1); }
         }
         .photo:hover { transform: translate(-50%, -50%) rotate(0deg) scale(1.25); z-index: 2000000; }
+        .photo-label {
+            display: none;
+            position: absolute; transform: translate(-50%, -50%); z-index: 1999999; pointer-events: none;
+            background: rgba(0, 0, 0, 0.75); color: #ff0; font: bold 12px monospace; padding: 2px 5px;
+            border-radius: 3px; white-space: nowrap;
+        }
+        #lb-name { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); color: #ff0; font: bold 18px monospace; background: rgba(0,0,0,0.75); padding: 4px 10px; border-radius: 4px; }
         .video-card {
             position: absolute;
             top: 50%;
@@ -51,18 +58,25 @@
         }
         #lightbox.open { display: flex; }
         #lightbox img { max-width: 92vw; max-height: 92vh; border-radius: 4px; }
+        #easter-egg {
+            position: fixed; inset: 0; display: none; z-index: 4000000;
+            align-items: center; justify-content: center; pointer-events: none;
+        }
+        #easter-egg.show { display: flex; }
+        #easter-egg img { height: 96vh; max-width: 96vw; object-fit: contain; filter: drop-shadow(0 10px 30px rgba(0,0,0,0.8)); }
     </style>
 </head>
 <body>
     <div class="video-card">
         <video src="clip.mp4" controls autoplay muted loop playsinline></video>
     </div>
-    <div id="lightbox"><img alt=""></div>
+    <div id="lightbox"><img alt=""><div id="lb-name"></div></div>
+    <div id="easter-egg"><img alt=""></div>
 
     <script>
         const VIDEO_BASE = 'https://brookevcollage.z13.web.core.windows.net/videos/';
-        const VIDEOS = ['Brooke1.mp4','Brooke8.mp4', 'Brooke2.mp4', 'Brooke3.mp4', 
-        'brooke4.mp4', 'Brooke5.mp4', 'Brooke6.mp4', 'Brooke7.mp4','clip.mp4']
+        const VIDEOS = ['Brooke1A.mp4','Brooke8.mp4', 'Brooke2.mp4', 'Brooke3.mp4', 
+        'brooke4.mp4', 'Brooke5.mp4', 'Brooke10.mp4','Brooke11.mp4','Brooke6.mp4', 'Brooke7.mp4','clip.mp4']
             .map(n => VIDEO_BASE + n);
         // Placeholder photo library; replace with the real library list later.
         let PHOTOS = Array.from({ length: 16 }, (_, i) => `images/photo${String(i + 1).padStart(2, '0')}.jpg`);
@@ -92,7 +106,20 @@
         // removed; each new one is layered on top of the earlier ones. Images load lazily.
         // After RECYCLE_AFTER photos are on screen, each new photo replaces the oldest one.
         const RECYCLE_AFTER = 100;
+        // After every EGG_EVERY photos, cover the screen with the easter-egg image for EGG_MS.
+        const EGG_EVERY = 100, EGG_MS = 3000;
+        const EGG_URL = 'https://brookevcollage.z13.web.core.windows.net/easter/Apple.png';
+        const egg = document.getElementById('easter-egg');
+        egg.querySelector('img').src = EGG_URL;
+        let shownCount = 0;
+        const showEgg = () => {
+            egg.classList.add('show');
+            setTimeout(() => egg.classList.remove('show'), EGG_MS);
+        };
         const onScreen = [];
+        // Press D (or open with ?debug) to show each photo's file name; click a photo to see it large with its name.
+        if (new URLSearchParams(location.search).has('debug')) document.body.classList.add('debug');
+        const fileName = src => decodeURIComponent(src.split('/').pop());
         let deck = [];
         const nextPhoto = () => {
             if (!deck.length) {
@@ -150,7 +177,22 @@
                     img.style.setProperty('--z', zCounter++);
                     document.body.appendChild(img);
                     onScreen.push(img);
-                    if (onScreen.length > RECYCLE_AFTER) onScreen.shift().remove();
+                    {
+                        const label = document.createElement('div');
+                        label.className = 'photo-label';
+                        label.textContent = fileName(img.src);
+                        label.style.left = img.style.left;
+                        label.style.top = img.style.top;
+                        label.style.zIndex = img.style.getPropertyValue('--z');
+                        document.body.appendChild(label);
+                        img._label = label;
+                    }
+                    if (onScreen.length > RECYCLE_AFTER) {
+                        const old = onScreen.shift();
+                        if (old._label) old._label.remove();
+                        old.remove();
+                    }
+                    if (++shownCount % EGG_EVERY === 0) showEgg();
                 });
                 img.addEventListener('error', () => { clearTimeout(popTimer); popTimer = setTimeout(popPhoto, 50); });
                 img.src = nextPhoto();
@@ -179,12 +221,16 @@
         document.addEventListener('click', e => {
             if (e.target.classList.contains('photo')) {
                 lb.querySelector('img').src = e.target.src;
+                document.getElementById('lb-name').textContent = fileName(e.target.src);
                 lb.classList.add('open');
             } else if (lb.contains(e.target)) {
                 lb.classList.remove('open');
             }
         });
-        document.addEventListener('keydown', e => { if (e.key === 'Escape') lb.classList.remove('open'); });
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') lb.classList.remove('open');
+            if (e.key === 'd' || e.key === 'D') document.body.classList.toggle('debug');
+        });
     </script>
 </body>
 </html>
